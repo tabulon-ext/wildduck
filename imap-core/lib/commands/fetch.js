@@ -43,7 +43,7 @@ module.exports = {
 
         let isUid = (command.command || '').toString().toUpperCase() === 'UID FETCH' ? true : false;
         let range = (command.attributes[0] && command.attributes[0].value) || '';
-        if (!imapTools.validateSequnce(range)) {
+        if (!imapTools.validateSequence(range)) {
             return callback(new Error('Invalid sequence set for ' + command.command));
         }
         let messages = imapTools.getMessageRange(this.selected.uidList, range, isUid);
@@ -311,10 +311,14 @@ module.exports = {
                     logdata._error = err.message;
                     logdata._code = err.code;
                     logdata._response = err.response;
+                    logdata._responseMessage = err.responseMessage;
+                    logdata._ratelimit_ttl = err.ttl;
                     this._server.loggelf(logdata);
+
                     return callback(null, {
                         response: 'NO',
-                        code: 'TEMPFAIL'
+                        code: 'TEMPFAIL',
+                        message: err.responseMessage
                     });
                 }
 

@@ -36,6 +36,7 @@ const onMove = require('./lib/handlers/on-move');
 const onSearch = require('./lib/handlers/on-search');
 const onGetQuotaRoot = require('./lib/handlers/on-get-quota-root');
 const onGetQuota = require('./lib/handlers/on-get-quota');
+const onXAPPLEPUSHSERVICE = require('./lib/handlers/on-xapplepushservice');
 
 let logger = {
     info(...args) {
@@ -77,10 +78,12 @@ let createInterface = (ifaceOptions, callback) => {
             vendor: config.imap.vendor || 'Kreata'
         },
 
+        aps: config.imap.aps,
+
         logger,
 
         maxMessage: config.imap.maxMB * 1024 * 1024,
-        maxStorage: ifaceOptions.maxStorage,
+        settingsHandler: ifaceOptions.settingsHandler,
 
         enableCompression: !!config.imap.enableCompression,
 
@@ -104,6 +107,8 @@ let createInterface = (ifaceOptions, callback) => {
     };
 
     certs.loadTLSOptions(serverOptions, 'imap');
+
+    serverOptions.logoutMessages = config.imap.quotes;
 
     const server = new IMAPServer(serverOptions);
 
@@ -154,6 +159,7 @@ let createInterface = (ifaceOptions, callback) => {
     server.onSearch = onSearch(server);
     server.onGetQuotaRoot = onGetQuotaRoot(server);
     server.onGetQuota = onGetQuota(server);
+    server.onXAPPLEPUSHSERVICE = onXAPPLEPUSHSERVICE(server);
 
     if (loggelf) {
         server.loggelf = loggelf;
@@ -249,50 +255,44 @@ module.exports = done => {
 
     let settingsHandler = new SettingsHandler({ db: db.database });
 
-    settingsHandler
-        .getMulti(['const:max:storage'])
-        .then(settings => {
-            let ifaceOptions = [
-                {
-                    enabled: true,
-                    secure: config.imap.secure,
-                    disableSTARTTLS: config.imap.disableSTARTTLS || false,
-                    ignoreSTARTTLS: config.imap.ignoreSTARTTLS || false,
-                    host: config.imap.host,
-                    port: config.imap.port,
+    let ifaceOptions = [
+        {
+            enabled: true,
+            secure: config.imap.secure,
+            disableSTARTTLS: config.imap.disableSTARTTLS || false,
+            ignoreSTARTTLS: config.imap.ignoreSTARTTLS || false,
+            host: config.imap.host,
+            port: config.imap.port,
+            settingsHandler
+        }
+    ]
+        .concat(config.imap.interface || [])
+        .filter(iface => iface.enabled);
 
-                    maxStorage: config.maxStorage ? config.maxStorage * 1024 * 1024 : settings['const:max:storage']
-                }
-            ]
-                .concat(config.imap.interface || [])
-                .filter(iface => iface.enabled);
+    let iPos = 0;
+    let startInterfaces = () => {
+        if (iPos >= ifaceOptions.length) {
+            return db.redis.del('lim:imap', () => done());
+        }
+        let opts = ifaceOptions[iPos++];
 
-            let iPos = 0;
-            let startInterfaces = () => {
-                if (iPos >= ifaceOptions.length) {
-                    return db.redis.del('lim:imap', () => done());
-                }
-                let opts = ifaceOptions[iPos++];
-
-                createInterface(opts, err => {
-                    if (err) {
-                        logger.error(
-                            {
-                                err,
-                                tnx: 'bind'
-                            },
-                            'Failed starting %sIMAP interface %s:%s. %s',
-                            opts.secure ? 'secure ' : '',
-                            opts.host,
-                            opts.port,
-                            err.message
-                        );
-                        return done(err);
-                    }
-                    setImmediate(startInterfaces);
-                });
-            };
+        createInterface(opts, err => {
+            if (err) {
+                logger.error(
+                    {
+                        err,
+                        tnx: 'bind'
+                    },
+                    'Failed starting %sIMAP interface %s:%s. %s',
+                    opts.secure ? 'secure ' : '',
+                    opts.host,
+                    opts.port,
+                    err.message
+                );
+                return done(err);
+            }
             setImmediate(startInterfaces);
-        })
-        .catch(err => done(err));
+        });
+    };
+    setImmediate(startInterfaces);
 };

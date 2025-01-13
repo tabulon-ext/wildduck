@@ -1,6 +1,6 @@
 #! /bin/bash
 
-OURNAME=06_install_wildduck.sh
+OURNAME=07_install_wildduck.sh
 
 echo -e "\n-- Executing ${ORANGE}${OURNAME}${NC} subscript --"
 
@@ -19,7 +19,7 @@ rm -rf /etc/wildduck
 
 # fresh install
 cd /var/opt
-git clone --bare git://github.com/nodemailer/wildduck.git
+git clone --bare https://github.com/nodemailer/wildduck.git
 
 # create update hook so we can later deploy to this location
 hook_script wildduck
